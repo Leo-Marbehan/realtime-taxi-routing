@@ -15,9 +15,10 @@ setup(
         'pip>=21.0',
         'tabulate',
         'scipy',
-        'matplotlib==3.8',
+        'matplotlib',
         'seaborn',
-        'gurobipy'
+        'gurobipy',
+        'shapely'
     ],
     include_package_data=True,
 )

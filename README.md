@@ -1,347 +1,386 @@
-# Realtime Taxi routing Overview
+# Real-time Taxi Routing
 
-The Taxi routing System is a solution designed to simulate and optimize taxi dispatching operations. This project requires the `multimodalsim` package for simulation and optimization of multimodal transportation systems. 
+A simulator and optimization testbed for taxi dispatching. Ride requests arrive over time, a fleet
+of vehicles must be assigned to serve them, and different algorithms are compared on how well they
+do it under varying amounts of advance knowledge.
+
+The project builds on two separate modules, each installed on its own:
+
+- **`p-multimodal-simulator`** -- provides the `multimodalsim` package, the discrete-event engine
+  that drives the simulation (environment, events, vehicles, trips, routes).
+- **`p-multimodal-viewer`** -- provides `multimodalsim_viewer` and the `viewer` command, a web
+  interface that replays a saved simulation or shows one live as it runs.
 
 ## Key Features
 
-- Handles offline, online, and stochastic optimization scenarios for taxi dispatching.
-- Supports re-optimization with destruction and repair methods.
-- Includes utilities for request generation, vehicle management, and runtime measurements.
+- Offline, online, and online-stochastic dispatching, plus a learned (reinforcement learning) policy.
+- Re-optimization with destroy-and-repair methods.
+- Instance generation, scenario batches, plotting, and a browser-based viewer.
 
-## Modules
+## Project Layout
+
+All source lives under `src/`.
+
 ### simulation
-- **data_reader.py**: Manages input data reading and preprocessing.
-- **RideRequest.py**: Defines the `RideRequest` class and associated methods.
-- **run_simulation.py**: Facilitates running simulations of the taxi dispatching system under various conditions.
-- **taxi_dispatcher.py**: Core module where the dispatching logic and algorithms are implemented.
-### utilities
-- **config.py**: Defines a configuration class (`SimulationConfig`) for customizing the simulation setup.
-- **enums.py**: Enumerates objectives, solution modes, algorithms, and other constants used across the system.
-- **tools.py**: Includes functions for calculating network distances, durations, costs, and visualization utilities.
-- **Timer.py**: Provide the possibility to calculate runtimes.
-- **test_generator.py**: Generates synthetic requests and vehicles for testing purposes.
+- **data_reader.py**: Reads requests, vehicles and the network graph, and applies the solution mode.
+- **ride_request.py**: Defines the `RideRequest` class and its attributes.
+- **run_simulation.py**: Builds and runs one simulation end to end.
+- **taxi_dispatcher.py**: Dispatch entry point; selects the solver and turns assignments into routes.
+
 ### solvers
-- **solver.py**: Baseline solver class that provides a foundation for other solver implementations.
-- **Offline_solver.py**: Contains an MIP solver for solving dispatch scenarios in offline mode, when all the requests are known in advance.
-- **Online_solver.py**: Contains the algorithms for solving dispatch scenarios in online mode, when all the requests are not known in advance and are received online.
-- **stochastic_solver.py**: Contains the algorithms for solving dispatch scenarios using online stochastic methods.
-- **Re_optimizer.py**: Contains the algorithms for re-optimizing the problem by first destroying the current solution and then repairing it.
-### run_test
-- **create_instances.py**: Contains functions to generate instances.
-- **create_plots.py**: Contains functions for plot generation based on user-specified metrics.
-- **run_test.py**: Contains functions to run a single test or multiple scenario-based tests.
+- **solver.py**: Base class shared by all solvers (vehicle state, feasibility, objective value).
+- **offline_solver.py**: Gurobi MIP model for the offline case, where all requests are known upfront.
+- **online_solver.py**: Greedy, random and ranking policies for requests arriving over time.
+- **stochastic_solver.py**: Consensus algorithms, which sample future scenarios before deciding.
+- **re_optimizer.py**: Destroy-and-repair re-optimization around an existing solution.
+- **dqn_solver.py**: Deep Q-Network policy that scores every (vehicle, request) pair and commits the
+  best, or defers.
 
-## multimodalsim Package Overview
+### utilities
+- **config.py**: `SimulationConfig` and the per-algorithm config objects.
+- **config_tools.py**: Helpers for building configs and identifying instances.
+- **enums.py**: `Objectives`, `Algorithm`, `SolutionMode`, and the other enumerations.
+- **network_tools.py**: Network distances, durations, driving costs and related helpers.
+- **create_scenario.py**: Samples synthetic requests, used by the consensus algorithms.
+- **paths.py**: Canonical data/result directory paths.
+- **types.py**: Shared type aliases.
+- **timer.py**: Runtime measurement.
+- **result_columns.py**, **reporting_tools.py**: Result column names and table formatting.
 
-The `multimodalsim` package is a Python library for simulating multi-modal discrete event transportation systems, focusing on the dynamics between trips (passengers) and vehicles within a network. It enables the comprehensive setup, execution, and analysis of simulations to evaluate transportation strategies.
+### execution
+- **run_tests.py**: Runs a single test or a batch of scenario combinations.
+- **run_viewer.py**: Runs a simulation through the viewer (saved for replay, or streamed live).
+- **train_dqn.py**: Training loop for the DQN policy.
+- **reference_test.py**: Regression checks against a small fixed instance.
+- **inputs.json**: The configuration file that drives everything below.
 
-### Key Components
-- **Agents**: Simulates two primary agents: trips (passengers) and vehicles. Trips are modeled as `Trip` objects with detailed attributes, including origin, destination, and timing constraints. Vehicles modeled as `Vehicle` objects, transport passengers based on the simulation's dynamics.
+### generation
+- **create_instance.py**: Generates instances from the real trip pool.
+- **clean_real_trips.py**, **convert_instances_to_csv.py**, **convert_network_to_json.py**: Data
+  preparation utilities.
 
-- **Environment**: The simulation environment where all agents operate, and events are processed.
+### reporting
+- **create_plots.py**: Plot generation from saved results.
+- **visualization.py**: Network and route drawing.
 
-- **Events**: Fundamental units driving the simulation's progress. Events are categorized into optimization, passenger, and vehicle events. The handling of events follows a priority queue mechanism, ensuring timely and orderly processing.
+## The multimodalsim Engine
 
-### Simulation Flow
-The simulation process is categorized into three main phases: Data Preparation, Initialization of Simulation Components, and Execution of the Simulation.
+`multimodalsim` simulates multi-modal discrete-event transportation systems, focusing on the
+interaction between trips (passengers) and vehicles on a network.
 
-### 1. Read and Prepare Data
-This phase involves reading input data, visualizing the network, and preparing vehicles and trips for the simulation.
+- **Agents**: `Trip` objects (origin, destination, timing constraints) and `Vehicle` objects.
+- **Environment**: Where agents live and events are processed.
+- **Events**: The unit of progress. Optimization, passenger and vehicle events are processed from a
+  priority queue ordered by time and priority. Nothing changes between two consecutive events.
+- **Optimization / Dispatcher**: The dispatcher is invoked at optimization events; it assigns trips
+  to vehicles and decides each vehicle's next stops.
 
-- **Data Reading**:
-  Utilize a `TaxiDataReader` to read in taxi requests, vehicle information, and the network graph.
-    ```python
-    data_reader = TaxiDataReader(requests_file_path, vehicles_file_path, graph_file_path, vehicles_end_time=100000)
-    vehicles, routes_by_vehicle_id = data_reader.get_json_vehicles()
-    trips = data_reader.get_json_trips(solution_mode, time_window)
-    ```
+The flow is: read and prepare the data, build the components, then run.
 
-- **Network Visualization**:
-  Extract and draw the network graph for a visual representation of the network's structure.
-    ```python
-    network_graph = data_reader.get_json_graph()
-    draw_network(network_graph, graph_file_path)
-    ```
-    
-### 2. Initialize Simulation Components
-Set up the core components of the simulation, including the dispatcher, optimization model, and environment observer. Insidee Dispatcher class there are three main methods for prearing inputs, optimizing and creating route plans.
+```python
+# 1. Read data
+data_reader = TaxiDataReader(requests_file_path, vehicles_file_path)
+data_reader.load_graph(graph_file_path)
+trips = data_reader.get_trips(config)
+vehicles, routes_by_vehicle_id = data_reader.get_vehicles(vehicles_end_time)
 
-- **Dispatcher Setup**:
-  Initialize a `TaxiDispatcher` with the network graph, chosen algorithm, and objective.
-    ```python
-    dispatcher = TaxiDispatcher(network_graph, algorithm, objective)
-    ```
+# 2. Build the dispatcher and wrap it in an Optimization object
+dispatcher = TaxiDispatcher(network_graph, config)
+opt = Optimization(dispatcher)
 
-- **Optimization Setup**:
-  Create an `Optimization` object with the dispatcher to manage trip splitting and route assignment.
-    ```python
-    opt = Optimization(dispatcher)
-    ```
+# 3. Run
+simulation = Simulation(opt, trips, vehicles, routes_by_vehicle_id, network=network_graph)
+simulation.simulate()
+```
 
-- **Environment Observer**:
-  Initialize a `StandardEnvironmentObserver` for simulation monitoring and visualization.
-    ```python
-    environment_observer = StandardEnvironmentObserver()
-    ```
+`run_simulation.py` does all of this for you -- the snippet is only to show the shape.
 
-### 3. Initialize and Run the Simulation
-Set up the simulation with all components and execute it.
+## The Viewer
 
-- **Simulation Initialization**:
-  Create a `Simulation` object with the optimization model, trips, vehicles, routes, network graph, and environment observer. 
-    ```python
-    simulation = Simulation(opt, trips, vehicles, routes_by_vehicle_id, network=network_graph, environment_observer=environment_observer)
-    ```
+`p-multimodal-viewer` serves a browser interface showing vehicles moving on the map, their routes,
+and each request's state over time. It can replay a saved run or display one live while it is still
+running, in which case you can also pause and resume the simulation from the browser.
 
-- **Simulation Execution**:
-  Start the simulation process by calling the `simulate` method, managing the state and utilizing the environment observer.
-    ```python
-    simulation.simulate()
-    ```
+The viewer reads its settings from a `.env` file **in the directory you run from**. The one shipped
+in the project root sets the input/output folders and enables route reordering support:
+
+```
+INPUT_DATA_DIRECTORY_PATH=data/Viewer_Instances
+OUTPUT_DATA_DIRECTORY_PATH=data/Viewer_Output
+ENABLE_STOP_REORDERING=true
+ENABLE_LEG_REORDERING=true
+```
+
+Keep those reordering flags set to `true`: re-optimizing algorithms legitimately change a vehicle's
+planned stops, and with the flags off the viewer treats that as an error and stops.
 
 # Installation and Setup
 
 ## Prerequisites
-- **Python 3.x**: Ensure you have Python 3.x installed on your system. You can download it from [the official Python website](https://www.python.org/).
-- **Git**: Make sure Git is installed to clone the repository and initialize submodules.
+- **Python 3.x**: Download it from [the official Python website](https://www.python.org/).
+- **Git**: Needed to clone the repository and its submodules.
 
 ## Setting Up the Environment
-1. **Clone the Repository with Submodules**: Start by cloning the repository to your local machine and initializing its submodules. Use the following command:
+
+1. **Clone the repository with its submodules**. The simulator and the viewer are both submodules,
+   so `--recursive` matters:
 
     ```bash
-    git clone https://github.com/RTOpt/realtime-taxi-routing.git
+    git clone --recursive https://github.com/RTOpt/realtime-taxi-routing.git
     cd realtime-taxi-routing
+    ```
+
+    If you already cloned without `--recursive`:
+
+    ```bash
     git submodule update --init --recursive
     ```
 
-2. **Create a Virtual Environment (Optional but Recommended)**:
-It's a best practice to create a virtual environment for your project to avoid conflicts with system-wide Python packages. Use the following commands to navigate to the project directory and create the environment. Replace [project-directory] with the address of the place you have saved the project.
+2. **Create a virtual environment** (recommended):
+
     ```bash
-    cd [project-directory]/realtime-taxi-routing
     python -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate` 
-
-3. **Install the Multimodal Simulator**: Use the following command to install the `multimodal-simulator`:
-
-    ```bash
-    pip install ./multimodal-simulator/python
-    ```
-4. **Instal Required Dependencies**: Install the dependencies for the project, including the `multimodalsim` submodule:
-    ```bash
-    pip install .
+    source venv/bin/activate   # On Windows: venv\Scripts\activate
     ```
 
-    This will automatically install all required Python packages and the`multimodal-simulator`, submodule.
-     
-5. **Using the Virtual Environment as the Python Interpreter**: After setting up the virtual environment, it's essential to ensure that your IDE or code editor is configured to use the Python interpreter from the virtual environment. Follow the steps below to select the Python interpreter from the virtual environment
+3. **Install the simulator, the viewer, and the project**:
 
-#### PyCharm:
-1. Open your project in PyCharm.
-2. Go to `File` > `Settings`.
-3. Navigate to `Project: your-project-name` > `Python Interpreter`.
-4. Click on `Add Interpreter`, and choose the Python interpreter located in your virtual environment (typically under the `venv/bin/python` path).
+    ```bash
+    pip install ./p-multimodal-simulator/python    # the multimodalsim engine
+    pip install ./p-multimodal-viewer/python       # the viewer and its `viewer` command
+    pip install -e .                               # this project and its dependencies
+    ```
 
-#### Visual Studio Code:
-1. Open your project folder in VS Code.
-2. Press `Ctrl+Shift+P` (or `Cmd+Shift+P` on macOS) to open the command palette.
-3. Type `Python: Select Interpreter` and select the command.
-4. Choose the interpreter from your virtual environment (usually found in the `.venv` or `venv` folder).
+    Install this project with `-e` (editable). A plain `pip install .` copies `src/` into the
+    environment, and that copy will then shadow your own edits.
 
+4. **Point your IDE at the virtual environment** so it uses the same interpreter.
+
+#### PyCharm
+1. `File` > `Settings` > `Project: your-project-name` > `Python Interpreter`.
+2. `Add Interpreter`, then choose the one in your virtual environment (`venv/bin/python`).
+
+#### Visual Studio Code
+1. Press `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS).
+2. Run `Python: Select Interpreter` and choose the one in `venv`.
 
 ## Installing Gurobi and Obtaining a Student License
 
-Gurobi is an optimization solver used in various industries and academic research. Follow the steps below to install Gurobi and obtain a student license:
+Gurobi solves the MIP models used by `mip_solver`, `re_optimize` and `consensus`.
 
-1. **Register and Download Gurobi**:
-   - Visit the [Gurobi Download Center](https://www.gurobi.com/downloads/gurobi-software/).
-   - Register for an account if you don't already have one. Ensure you use your academic email address to qualify for the free academic license.
-   - Download the appropriate version of Gurobi for your operating system.
-
-2. **Install Gurobi**:
-   - Follow the [Software Installation Guide](https://support.gurobi.com/hc/en-us/articles/14799677517585) specific to your operating system to install Gurobi.
-
-3. **Obtain a Free Academic License**:
-   - Visit the [Gurobi License Center](https://www.gurobi.com/downloads/end-user-license-agreement-academic/).
-   - Apply for a free academic license. You will need to provide your university email address and verify your academic status.
-   - Follow the instructions to activate your license. Typically, this involves running a command in your terminal or command prompt.
-
-4. **Set Up the Gurobi Environment**:
-   - Ensure that your Python environment is set up to recognize Gurobi. If you're using a virtual environment for your project, you may need to update it with Gurobi's Python bindings.
-   ```bash
-    python -m pip install gurobipy
-
-For the most up-to-date and detailed installation instructions, please refer to the [official Gurobi documentation](https://www.gurobi.com/documentation/).
-
-**Note**: The process for obtaining a Gurobi license may change, and the terms of use for Gurobi software are subject to Gurobi's licensing agreement. Ensure you comply with all license terms and conditions.
-
-## Testing the simulator
-Before running any simulations or tests, ensure that your virtual environment is activated to avoid any dependency issues. For example, if you're using `venv`, you can activate it with:
-```bash
-    cd [project-directory]/realtime-taxi-routing
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate` 
-```
-### Configuration File
-To run the simulations, the inputs are provided in a JSON file(`inputs.json`). This file specifies whether to run a single test, multiple scenario-based tests or creating plots. The `task_type` key within this file sets the mode of operation:
-
-- **single_test:** Executes one test instance.
-- **scenarios:** Runs a series of predefined scenario sets.
-- **create_plot:** Generates plots based on the results of predefined scenarios.
-    
-### Running a Single Test
-To run a single test:
-
-1. Configure your `inputs.json` file by specifying the `task_type` as `"single_test"` and providing the required parameters within the `"single_test"` block.
-2. Navigate to the root project directory and run:
-   ```bash
-   cd [project-directory]/realtime-taxi-routing
-   python -m src.main
-   ```
-    Alternatively, a single test can be executed by passing parameters via the command line and executing `Run_Example.py` file as follows:
+1. **Register and download**: [Gurobi Download Center](https://www.gurobi.com/downloads/gurobi-software/).
+   Use your academic email to qualify for the free academic license.
+2. **Install**: follow the [Software Installation Guide](https://support.gurobi.com/hc/en-us/articles/14799677517585)
+   for your operating system.
+3. **Get a free academic license**: [Gurobi License Center](https://www.gurobi.com/downloads/end-user-license-agreement-academic/).
+   Apply, verify your academic status, then activate it as instructed.
+4. **Install the Python bindings** in your environment:
 
     ```bash
-   python -m src.Run_Example -i <INSTANCE> -o <OBJECTIVE> -a <ALGORITHM> -m <SOLUTION_MODE> -tw <TIME_WINDOW>
-   ```
-    available options for input arguments are:<br /><br />
+    python -m pip install gurobipy
+    ```
 
-    - `-i, --instance`: Specifies the test instance folder (e.g., `Med_1`).
-    - `-o, --objective`: Defines the optimization objective (`total_profit`, `waiting_time`, `total_customers`).
-    - `-a, --algorithm`: Specifies the algorithm for dispatch optimization (`mip_solver`, `greedy`, `random`, etc.).
-    - `-m, --sol-mode`: Defines request availability mode (`offline`, `fully_online`, `advance_notice`, etc.).
-    - `-tw, --time-window`: Sets the time window in minutes for serving requests (e.g., `3`).<br /><br />
+See the [official Gurobi documentation](https://www.gurobi.com/documentation/) for the current
+instructions. The licensing terms are Gurobi's and may change.
 
-    Additional parameters can be specified as needed to further customize the test execution for some algorithms. These include:<br /><br />
+# Running the Simulator
 
-   - `-kp, --known-portion`: Defines the percentage of requests known in advance (0-100%).
-   - `-ns, --nb-scenario`: Specifies the number of scenarios for consensus-based decision-making.
-   - `-cr, --cust-rate`: Determines the average customer arrival rate per node per hour.
-   - `-cp, --consensus-params`: Chooses the type of consensus approach (`qualitative` or `quantitative`).
-   - `-dm, --dest-method`: Sets the destruction method used in re-optimization (`default`, `fix_variables`, `fix_arrivals`, or `bonus`).<br /><br />
+Activate your virtual environment first, and run every command from the project root:
 
-   More details regarding the available options can be find in `Run_Example.py` file.
-### Running Scenarios
-1. Set `task_type` to `"scenarios"` in the `inputs.json` file.
-2. Determine a scenario to run. The available options for <SCENARIO_NAME> are:<br /><br />
-   - `"initial_test"`: Used for verifying the installation and familiarizing yourself with the simulation. 
-   - `"TP4_scenario"`: Determines the number of scenarios in TP4.
-   - `"TP1","TP2","TP3","TP4"`: Predefined scenarios corresponding to each TP.<br /><br />
-3. Execute the scenario(s) using:
-   ```bash
-   python -m src.main -sn <SCENARIO_NAME>
-   ```
-    Replace `<SCENARIO_NAME>` with the name of the scenario you wish to run, for example:
-   ```bash
-   python -m src.main -sn TP2
-   ```
-    This will run all parameter combinations defined for the given scenario and save the results to a CSV file in the `data/Instances/Results` directory.
-### Creating Plots
-1. Set `task_type` to `"create_plot"` in the `inputs.json` file.
-2. Determine the scenario to create the plot(s). The available options for <SCENARIO_NAME> are:<br /><br />
-   - `"TP4_scenario"`: Create plots to determine the number of scenarios in TP4.
-   - `"TP1","TP2","TP3","TP4"`: Creates plots corresponding to each TP.<br /><br />
-3. Before generating plots, verify that the results for the selected scenario are available. Specifically, ensure that the following file exists in the `data/Instances/Results` directory.<br /><br />
-    - `<SCENARIO_NAME>_simulation_results.csv`<br /><br />
-    
-   Do not rename or relocate the results file.
-4. Run the following command to create the plot for the selected scenario:
-   ```bash
-   python -m src.main -sn <SCENARIO_NAME>
-   ```
-### Generating Instances
-Configure parameters in `inputs.json` and run:
 ```bash
-   python -m src.main
-   ```
-## Configuration of Parameters
-The following parameters can be specified in `inputs.json`:
-### task_type
-- **Description:** Determines the type of execution.
-- **Options:** `"single_test"`, `"scenarios"`, `"create_plot"`
+cd [project-directory]/realtime-taxi-routing
+source venv/bin/activate   # On Windows: venv\Scripts\activate
+```
+
+## Configuration File
+
+Everything is driven by `src/execution/inputs.json`. Its `task_type` key selects what happens:
+
+| `task_type` | What it does |
+|---|---|
+| `single_test` | Runs one instance with one configuration. |
+| `scenarios` | Runs a batch of parameter combinations (needs `-sn <SCENARIO_NAME>`). |
+| `create_plot` | Plots saved results for a scenario (needs `-sn <SCENARIO_NAME>`). |
+| `viewer_simulate` | Runs one simulation for the viewer. |
+| `create_instance` | Generates new instances. |
+| `train_dqn` | Trains the DQN policy. |
+
+## Quick Sanity Check
+
+Before running the full instances, you can check a small fixed instance
+(`data/Debug_Instances/Debug_1`) against known-good results:
+
+```bash
+python -m unittest src.execution.reference_test.ReferenceTestCase.test_mip_solver
+python -m unittest src.execution.reference_test.ReferenceTestCase.test_greedy
+python -m unittest src.execution.reference_test.ReferenceTestCase.test_dqn_structural
+```
+
+These compare against reference numbers, so they are useful for catching obviously broken logic
+early. `mip_solver` is the most meaningful of the three, since the offline optimum is well defined.
+For `greedy`, a different but still valid way of breaking ties between equally good vehicles can
+produce different numbers without being wrong.
+
+## Running a Single Test
+
+1. Set `task_type` to `"single_test"` and fill in the `"single_test"` block of `inputs.json`.
+2. Run:
+
+    ```bash
+    python -m src.main
+    ```
+
+A single test can also be run from the command line:
+
+```bash
+python -m src.Run_Example -i <INSTANCE> -o <OBJECTIVE> -a <ALGORITHM> -m <SOLUTION_MODE> -tw <TIME_WINDOW>
+```
+
+- `-i, --instance`: Instance folder (e.g. `Instance_1`).
+- `-o, --objective`: `total_profit`, `waiting_time`, `total_customers`, `multi_objective`.
+- `-a, --algorithm`: `mip_solver`, `greedy`, `random`, `ranking`, `consensus`, `re_optimize`, `dqn`.
+- `-m, --sol-mode`: `offline`, `fully_online`, `advance_notice`, `partial_online`, `custom_scenario`.
+- `-tw, --time-window`: Time window **in seconds** (e.g. `240`).
+
+Algorithm-specific options:
+
+- `-kp, --known-portion`: Percentage of requests known in advance (0-100).
+- `-an, --advance-notice`: How long before its ready time a request is revealed, in seconds.
+- `-ns, --nb-scenario`: Number of scenarios for consensus.
+- `-cp, --consensus-params`: `qualitative` or `quantitative`.
+- `-dm, --dest-method`: `default`, `fix_variables`, `fix_arrivals`, `bonus`.
+- `-wp, --weight`: Weight of the first objective under `multi_objective` (0-1).
+- `-s, --seed`: Random seed, where the algorithm uses one.
+
+See `Run_Example.py` for the full list.
+
+## Running Scenarios
+
+1. Set `task_type` to `"scenarios"`.
+2. Run:
+
+    ```bash
+    python -m src.main -sn <SCENARIO_NAME>
+    ```
+
+Available scenarios: `initial_test`, `TP1`, `TP1_Multi`, `TP2`, `TP3`, `TP4`, `TP4_scenario`, `TP5`.
+
+`TP2`, `TP4` and `TP5` are *groups*: running one runs all of its sub-scenarios and combines the
+results into a single `<GROUP>_simulation_results.csv`. The mapping lives in `inputs.json` under
+`"scenario_groups"`, so it is visible in the configuration rather than hidden in code.
+
+Results are written to `data/Real_Instances/Results`.
+
+**Run `TP1` first.** The other scenarios report a `Competitive Ratio` against TP1's offline-optimal
+results. If TP1 has not been run for the instance, time window and objective being tested -- or its
+saved results no longer match the instance files on disk -- the run stops with an error telling you
+to re-run TP1, rather than quietly comparing against the wrong baseline.
+
+## Creating Plots
+
+1. Set `task_type` to `"create_plot"`.
+2. Make sure `<SCENARIO_NAME>_simulation_results.csv` exists in `data/Real_Instances/Results`; do
+   not rename or move it.
+3. Run:
+
+    ```bash
+    python -m src.main -sn <SCENARIO_NAME>
+    ```
+
+## Using the Viewer
+
+The viewer runs as a separate process and the simulation connects to it.
+
+1. Start the viewer (opens your browser):
+
+    ```bash
+    viewer start
+    ```
+
+2. In another terminal, set `task_type` to `"viewer_simulate"`, configure the `"single_test"` block,
+   and run:
+
+    ```bash
+    python -m src.main
+    ```
+
+Both commands must run from the project root so they share the same `.env`.
+
+By default the run is saved and can be replayed from the viewer afterwards. Adding `"live": true` to
+the `"single_test"` block streams it to the viewer while it runs, and lets you pause and resume it
+from the browser. If the viewer is not running, the simulation prints a connection warning and
+continues normally.
+
+Use `viewer stop` to shut it down.
+
+## Generating Instances
+
+Set `task_type` to `"create_instance"`, configure the `"create_instance"` block, and run
+`python -m src.main`. Parameters:
+
+- **num_instances**: How many instances to generate.
+- **nb_requests**: Requests per instance.
+- **start_time**: Start of the request window, in seconds from midnight (e.g. `25200` = 07:00).
+- **sim_time**: Length of the request window, in seconds.
+- **alpha**, **beta**: Fare parameters (base fare and per-unit rate).
+- **known_portion**: Percentage of requests known in advance at generation time.
+- **advance_notice**: How far ahead requests are revealed, in seconds.
+- **nb_vehicles**: Fleet size.
+- **seed**: Random seed, for reproducible instances.
+
+## Training the DQN
+
+Set `task_type` to `"train_dqn"` and run `python -m src.main`. The `"train_dqn"` block lists one
+entry per model, each with its own objective, training instances and output checkpoint path.
+Checkpoints are written to `data/Models` and are loaded automatically when you later run the `dqn`
+algorithm with the matching `model_path`.
+
+# Configuration Parameters
 
 ### instances
-- **Description:** Folder name of the instance to test.
-- **Example:** `"Med_1"`
+Folder name of the instance to run, e.g. `"Instance_1"`. The real instances are `Instance_1` to
+`Instance_20`; `Tiny_1` and `Debug_1` are small instances useful for quick checks.
 
 ### objectives
-- **Description:** Defines the optimization objective to achieve (Default: `"total_customers"`).
-- **Options:**
-  - `"total_profit"`: Maximizes the total profit of served requests.
-  - `"waiting_time"`: Minimizes the total wait time of served requests.
-  - `"total_customers"`: Maximizes the total number of served customers.
-
+- `"total_profit"`: Maximize total profit of served requests.
+- `"waiting_time"`: Minimize total waiting time.
+- `"total_customers"`: Maximize the number of served customers.
+- `"multi_objective"`: Weighted combination, controlled by `weight`.
 
 ### algorithms
-- **Description:** Selects the algorithm to optimize the dispatch plan (Default: `"mip_solver"`).
-- **Options:**
-  - `"mip_solver"`: Uses the Gurobi MIP solver to solve the problem.
-  - `"greedy"`: Greedy approach to assign requests to vehicles.
-  - `"random"`: Random approach to assign requests to vehicles.
-  - `"ranking"`: Ranking approach to assign requests to vehicles.
-  - `"consensus"`: Consensus approach to assign requests to vehicles.
-  - `"re_optimize"`: Re-optimize the solution based on destroy and repair.
+- `"mip_solver"`: Gurobi MIP model (offline).
+- `"greedy"`, `"random"`, `"ranking"`: Online heuristics.
+- `"consensus"`: Online stochastic, sampling future scenarios.
+- `"re_optimize"`: Destroy-and-repair re-optimization.
+- `"dqn"`: Learned policy; requires a trained checkpoint.
 
 ### solution_mode
-- **Description:** Sets how requests become available (Default: `"offline"`).
-- **Options:**
-  - `"offline"`: All requests are known at the start.
-  - `"fully_online"`: Release time is equal to the ready time for all requests.
-  - `"advance_notice"`: Requests become known 30 minutes before the ready time.
-  - `"partial_online"`: A percentage of requests are known in adavnce.
-  - `"custom_scenario"`: A mix of advance_notice and partial_online.
+- `"offline"`: All requests known at the start.
+- `"fully_online"`: Each request is revealed at its ready time.
+- `"advance_notice"`: Requests are revealed a fixed time (default 1800 s = 30 min) before ready time.
+- `"partial_online"`: A percentage is known in advance, the rest at their ready time.
+- `"custom_scenario"`: A mix of advance notice and partial knowledge.
 
-### known-portion
-- **Description:** Percentage of requests that are known in advance (0-100%).
-- **Applicable if:** `solution_mode` is `"partial_online"` or `"custom_scenario"`.
+### known_portion
+Percentage of requests known in advance (0-100). Applies to `"partial_online"` and
+`"custom_scenario"`.
 
 ### time_window
-- **Description:** Time window (in minutes) to serve each request (Default: `3`).
+Time window **in seconds** within which a request must be picked up (e.g. `240`).
 
 ### nb_scenario
-- **Description:** Number of scenarios for the consensus algorithm (Default: `10`).
-- **Applicable if:** `algorithms` is `"consensus"`.
+Number of scenarios sampled by `"consensus"` (default `10`).
 
 ### consensus_params
-- **Description:** Type of consensus approach (Default: `"quantitative"`).
-- **Applicable if:** `algorithms` is `"consensus"`.
-- **Options:**
-  - `"qualitative"`: Increment a counter for the best request in each scenario.
-  - `"quantitative"`: Credit the best request with the optimal solution value.
+- `"qualitative"`: Count votes for the best request in each scenario.
+- `"quantitative"`: Weight each vote by the scenario's objective value.
 
-### dest_method
-- **Description:** Destruction method for re-optimization (Default: `"default"`).
-- **Applicable if:** `algorithms` is `"re_optimize"`.
-- **Options:**
-  - `"default"`: Default destruction method (Complete re-optimization).
-  - `"fix_variables"`: Fix some of the variables in the model
-  - `"fix_arrivals"`: Fix a time window around the arrival time
-  - `"bonus"`: Arbitrary destroy method as bonus
+### destroy_method
+Applies to `"re_optimize"`:
+- `"default"`: Complete re-optimization.
+- `"fix_variables"`: Fix some model variables.
+- `"fix_arrivals"`: Fix a time window around arrival times.
+- `"bonus"`: Your own destroy method.
 
-With default parameters you should obtain the following results (except for the optimization_time):
-  ```console
-    Attribute            | Value
-    ---------------------+---------------------------
-    Test                 | 2-Med_1
-    # Trips              | 127
-    # Vehicles           | 25
-    Solution Mode        | offline
-    Time window (min)    | 6
-    weight               | 0
-    Algorithm            | MIP_Solver
-    Objective type       | total_customers
-    Objective value      | 94.0
-    % of Service         | 74.0
-    runtime (s)          | 12.19
-  ```
-
-Below is the explanation for the parameters used to generate instances:
-
-- **num_suburbs (int)**:
-  Determines the number of suburban areas surrounding the main city.
-
-- **suburb_width (int)**:
-  Indicates the size of each suburban area as a square grid. For example, `suburb_width = 4` creates a 4x4 grid of nodes for each suburb.
-
-- **city_width (int)**:
-  Defines the size of the central city as a square grid. For example, `city_width = 8` results in an 8x8 grid for the main city.
-
-- **block_distance (float)**:
-  Specifies the distance (in meters) between adjacent nodes within the city and the suburbs. Larger values produce a more spatially extensive network, increasing travel times between nodes.
+### model_path
+Checkpoint file used by `"dqn"`, e.g. `"data/Models/dqn_model_profit.pt"`.

@@ -1,7 +1,8 @@
 from src.solvers.offline_solver import OfflineSolver
-from src.utilities.enums import DestroyMethod
+from src.utilities.enums import DestroyMethod, Objectives
 from src.solvers.solver import Solver
 from src.utilities.config import SimulationConfig
+from src.utilities.types import TripLike, VehicleLike, TravelTimeMatrix
 from typing import Any, Dict, List
 
 
@@ -46,13 +47,24 @@ class ReOptimizer(Solver):
     def __init__(self,
                  network: Any,
                  vehicles: List[Any],
-                 simulation_config: SimulationConfig) -> None:
-        super().__init__(network, vehicles, simulation_config)
+                 simulation_config: SimulationConfig,
+                 durations: TravelTimeMatrix,
+                 costs: TravelTimeMatrix) -> None:
+        super().__init__(network, vehicles, simulation_config, durations, costs)
         self.initial_solution : Dict[str, Any] = {}
-        self.destroy_method = simulation_config.algorithm_params["destroy_method"]
+        self.destroy_method = simulation_config.re_optimize.destroy_method
+
+    def solve(self, all_vehicles, active_vehicles, trips, rejected_trips, current_time=None) -> None:
+        """Uniform entry point for TaxiDispatcher.optimize().
+
+        `current_time` is accepted for interface uniformity with StochasticSolver.solve but unused
+        by re-optimization.
+        """
+        self.variables_declaration(all_vehicles, trips)
+        self.re_optimizer(active_vehicles, trips, rejected_trips)
 
 
-    def re_optimizer(self, K, P_not_served, rejected_trips):
+    def re_optimizer(self, K: List[VehicleLike], P_not_served: List[TripLike], rejected_trips: List[TripLike]) -> None:
         """Re-optimize the solution using destroy and repair (LNS).
 
         Input:
@@ -69,7 +81,10 @@ class ReOptimizer(Solver):
         """
 
         # Create and configure the offline model
-        offline_model = OfflineSolver(self.network, self.objective)
+        if self.objective == Objectives.MULTI_OBJECTIVE:
+            offline_model = OfflineSolver(self.objective, durations=self.durations, costs=self.costs, weight=self.weight)
+        else:
+            offline_model = OfflineSolver(self.objective, durations=self.durations, costs=self.costs)
         offline_model.create_model(K, P_not_served, self.vehicle_request_assign)
 
         if self.initial_solution:
@@ -88,7 +103,7 @@ class ReOptimizer(Solver):
         offline_model.define_objective(K, P_not_served, self.vehicle_request_assign)
 
         # solve and get solution
-        offline_model.solve()
+        offline_model.solve(mip_gap=0.05)
         offline_model.extract_solution(K, P_not_served, rejected_trips, self.vehicle_request_assign)
 
         self.save_solution(offline_model)
@@ -127,7 +142,7 @@ class ReOptimizer(Solver):
             'assignment_dict': assignment_dict
         }
 
-    def destroy_fix_arrival_times(self, P, offline_model: OfflineSolver) -> None:
+    def destroy_fix_arrival_times(self, P: List[TripLike], offline_model: OfflineSolver) -> None:
         """Fix pickup times to a time window around values in initial_solution (e.g. ±2 min).
 
         Input:
@@ -135,10 +150,12 @@ class ReOptimizer(Solver):
             P : set of customers to serve
             offline_model : OfflineSolver instance (Gurobi MIP model).
 
+        Hint:
+            - self.initial_solution holds the previous solution.
         """
-        """you should write your code here ..."""
+        raise NotImplementedError("ReOptimizer.destroy_fix_arrival_times() not implemented")
 
-    def destroy_fix_variables(self, K, P, offline_model: OfflineSolver):
+    def destroy_fix_variables(self, K: List[VehicleLike], P: List[TripLike], offline_model: OfflineSolver) -> None:
         """ Fix some of Y_var, X_var variables based on the initial solution.
 
         Input:
@@ -148,14 +165,12 @@ class ReOptimizer(Solver):
             offline_model : OfflineSolver instance (Gurobi model).
 
         Hint:
-            - Forbid the arcs that goes from one request to another one that were in different vehicle
-            - Forbid the arcs that goes from departing node of a vehicle to other requests that were in different
-                  vehicle
+            - self.initial_solution holds the previous solution.
         """
-        """you should write your code here ..."""
+        raise NotImplementedError("ReOptimizer.destroy_fix_variables() not implemented")
 
 
-    def destroy_bonus(self, K, P, offline_model: OfflineSolver):
+    def destroy_bonus(self, K: List[VehicleLike], P: List[TripLike], offline_model: OfflineSolver) -> None:
         """Custom destroy method
 
         Input:
@@ -168,5 +183,5 @@ class ReOptimizer(Solver):
             - Include comments where necessary to explain your proposed function
             - you can use any of the inputs if required
         """
-        """you should write your code here ..."""
+        raise NotImplementedError("ReOptimizer.destroy_bonus() not implemented")
 

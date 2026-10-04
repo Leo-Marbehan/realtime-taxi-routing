@@ -17,7 +17,7 @@ class RideRequest(Trip):
     """
 
     def __init__(self,
-                 id: int,
+                 id: str,
                  origin: Location,
                  destination: Location,
                  nb_passengers: int,
@@ -40,24 +40,24 @@ class RideRequest(Trip):
 
 
     @property
-    def latest_pickup(self):
+    def latest_pickup(self) -> float:
         """Getter for the latest_pickup attribute."""
         return self.__latest_pickup
 
     @property
-    def fare(self):
+    def fare(self) -> float:
         """Getter for the fare attribute."""
         return self.__fare
 
 
     @property
-    def shortest_travel_time(self):
+    def shortest_travel_time(self) -> float:
         """Getter for the shortest_travel_time attribute."""
         return self.__shortest_travel_time
 
 
     @latest_pickup.setter
-    def latest_pickup(self, latest_pickup):
+    def latest_pickup(self, latest_pickup: float) -> None:
         """Setter for the latest_pickup_time attribute."""
         self.__latest_pickup = latest_pickup
 

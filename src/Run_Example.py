@@ -1,37 +1,41 @@
 import os
 import logging
 import argparse
-from src.utilities.tools import (print_dict_as_table, match_enum, determine_cust_node_hour, print_result_as_table)
+from src.utilities.reporting_tools import print_dict_as_table, print_result_as_table
+from src.utilities.config_tools import match_enum, derive_consensus_params, resolve_release_params
 from src.utilities.enums import (Algorithm, Objectives, DestroyMethod, ConsensusParams, SolutionMode)
 from src.simulation.run_simulation import run_taxi_simulation
-from src.utilities.config import SimulationConfig
+from src.utilities.config import SimulationConfig, ConsensusConfig, ReOptimizeConfig
+from src.utilities.paths import REAL_INSTANCES_FOLDER
 
 
-def run_example(test_folder: str, config: SimulationConfig) -> None:
+def run_example(test_folder: str, config: SimulationConfig, deep_copy: bool = False) -> None:
     """
     Runs a taxi dispatch simulation with the specified parameters.
 
     Parameters:
     ----------------------
     test_folder: str
-        folder of the instance to test
+        folder of the instance to test, under data/Real_Instances
 
     config: SimulationConfig
         Configuration object containing all simulation parameters.
+
+    deep_copy: bool
+        Whether multimodalsim should deep-copy the environment before each optimization step
+        (state_deep_copy). False (the default) is faster; True is the safer/slower legacy mode.
     """
     logging.getLogger().setLevel(logging.WARN)  # INFO
 
     # Define base paths
-    base_folder = "data/Instances"
-    graph_file_path = "data/Instances/network.json"
-    test_path = os.path.join(base_folder, test_folder)
-
+    test_path = os.path.join(REAL_INSTANCES_FOLDER, test_folder)
 
     # Run the simulation
     info_dict, output_dict = run_taxi_simulation(
         test_path,
-        graph_file_path,
         config=config,
+        deep_copy=deep_copy,
+        require_competitive_ratio=True,
     )
 
     # Combine and print the results
@@ -41,25 +45,31 @@ def run_example(test_folder: str, config: SimulationConfig) -> None:
 
 def parse_arguments() -> tuple[str, SimulationConfig]:
     """
-    Parses command-line arguments and returns test_folder and a SimulationConfig object.
+    Parses command-line arguments and returns test_folder, a SimulationConfig object, and the
+    deep_copy flag.
 
     Returns:
+        test_folder: The directory path (under data/Real_Instances) where the test files are located.
         SimulationConfig: Configured simulation parameters.
-        test_folder: The directory path where the test files are located.
+        deep_copy: Whether multimodalsim should deep-copy the environment before each
+            optimization step (state_deep_copy).
     """
     parser = argparse.ArgumentParser(
         description='Run a taxi simulation',
         formatter_class=argparse.RawTextHelpFormatter
     )
 
-    parser.add_argument("-i", "--instance", type=str, default="Med_1",
-                        help="Folder of the instance to test. Default: Med_1")
+    parser.add_argument("-i", "--instance", type=str, default="Instance_1",
+                        help="Folder of the instance to test, under data/Real_Instances. Default: Instance_1")
 
     parser.add_argument("-o", "--objective", type=str, default="total_customers",
                         help=("The optimization objective to achieve:\n"
                               "- total_profit: Maximizes the total profit of served requests.\n"
                               "- waiting_time: Minimizes the total wait time of served requests.\n"
                               "- total_customers: Maximizes the total number of served customers.\n"
+                              "- total_revenue: Maximizes the total fare of served requests.\n"
+                              "- total_cost: Minimizes the total driving cost of served requests.\n"
+                              "- total_empty_travel_time: Minimizes the total empty-leg travel time.\n"
                               "- multi_objective: Weighted combination of profit and wait time (use -wp for weight).\n"
                               "Default: total_customers"))
 
@@ -82,13 +92,13 @@ def parse_arguments() -> tuple[str, SimulationConfig]:
                              "Default: offline")
 
     parser.add_argument("-kp", "--known-portion", type=float, default=100,
-                        help="Portion of requests that are known in advance (0-100%). Default: 100")
+                        help="Portion of requests that are known in advance (0-100%%). Default: 100")
 
     parser.add_argument("-an", "--advance-notice", type=int, default=0,
-                        help="Fixed amount of time (minutes) the requests are released before their ready time. Default: 0")
+                        help="Fixed amount of time (seconds) the requests are released before their ready time. Default: 0")
 
-    parser.add_argument("-tw", "--time-window", type=int, default=3,
-                        help="Size of the time window in minutes to serve a request. Default: 3")
+    parser.add_argument("-tw", "--time-window", type=int, default=180,
+                        help="Size of the time window in seconds to serve a request. Default: 180")
 
     parser.add_argument("-ns", "--nb-scenario", type=int, default=5,
                         help="Total number of scenarios to be solved for consensus. Default: 20")
@@ -117,6 +127,14 @@ def parse_arguments() -> tuple[str, SimulationConfig]:
     parser.add_argument("-wp", "--weight", type=float, default=1,
                         help=("Weight w in [0, 1] for profit in multi-objective. Default: 0.5"))
 
+    parser.add_argument("-dc", "--deep-copy", action="store_true",
+                        help="Have multimodalsim deep-copy the environment before each optimization "
+                             "step (slower, legacy mode). Default: off (faster).")
+
+    parser.add_argument("-s", "--seed", type=int, default=None,
+                        help="Seed for the consensus algorithm's own scenario-sampling randomness. "
+                             "Default: unseeded.")
+
     args = parser.parse_args()
 
     # Map string inputs to enums
@@ -126,25 +144,29 @@ def parse_arguments() -> tuple[str, SimulationConfig]:
         dest_method_enum = match_enum(args.dest_method, DestroyMethod)
         consensus_param_enum = match_enum(args.consensus_params, ConsensusParams)
         solution_mode_enum = match_enum(args.sol_mode, SolutionMode)
-        if solution_mode_enum == SolutionMode.OFFLINE:
-            known_portion = 100
-            advance_notice = 0
-        elif solution_mode_enum == SolutionMode.FULLY_ONLINE:
-            known_portion = 0
-            advance_notice = 0
-        elif solution_mode_enum == SolutionMode.PARTIAL_ONLINE:
-            known_portion = args.known_portion
-            advance_notice = 0
-        elif solution_mode_enum == SolutionMode.ADVANCE_NOTICE:
-            known_portion = 0
-            advance_notice = 30
-        else:
-            known_portion = args.known_portion
-            advance_notice = 30
+        known_portion, advance_notice = resolve_release_params(solution_mode_enum, args.known_portion)
     except ValueError as e:
         parser.error(str(e))
 
-    # Create a SimulationConfig object
+    # Build the algorithm-specific config (if any) before constructing SimulationConfig, since
+    # SimulationConfig validates that the right one is present for the chosen algorithm.
+    consensus_config = None
+    if algorithm_enum == Algorithm.CONSENSUS:
+        test_path = os.path.join(REAL_INSTANCES_FOLDER, args.instance)
+        nb_requests, generation_sim_time = derive_consensus_params(test_path)
+        consensus_config = ConsensusConfig(
+            nb_scenario=args.nb_scenario,
+            nb_requests=nb_requests,
+            generation_sim_time=generation_sim_time,
+            consensus_param=consensus_param_enum,
+            seed=args.seed,
+        )
+
+    re_optimize_config = None
+    if algorithm_enum == Algorithm.RE_OPTIMIZE:
+        re_optimize_config = ReOptimizeConfig(destroy_method=dest_method_enum)
+
+    # Create the SimulationConfig object
     config = SimulationConfig(
         objective=objective_enum,
         algorithm=algorithm_enum,
@@ -152,28 +174,20 @@ def parse_arguments() -> tuple[str, SimulationConfig]:
         advance_notice=advance_notice,
         time_window=args.time_window,
         solution_mode=solution_mode_enum,
+        weight=args.weight,
+        consensus=consensus_config,
+        re_optimize=re_optimize_config,
     )
 
-    # Populate algorithm_params based on the chosen algorithm
-    if algorithm_enum == Algorithm.CONSENSUS:
-        config.algorithm_params["nb_scenario"] = args.nb_scenario
-        config.algorithm_params["cust_node_hour"] = determine_cust_node_hour(args.instance)
-        config.algorithm_params["consensus_param"] = consensus_param_enum
-
-    if algorithm_enum == Algorithm.RE_OPTIMIZE:
-        config.algorithm_params["destroy_method"] = dest_method_enum
-
-    config.algorithm_params["weight"] = args.weight
-
-    return args.instance, config
+    return args.instance, config, args.deep_copy
 
 
 def main():
     """
     Main function to run the taxi simulation based on command-line arguments.
     """
-    test_folder, config = parse_arguments()
-    run_example(test_folder, config)
+    test_folder, config, deep_copy = parse_arguments()
+    run_example(test_folder, config, deep_copy)
 
 if __name__ == '__main__':
     main()

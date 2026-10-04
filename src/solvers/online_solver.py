@@ -3,8 +3,9 @@ from typing import Any, List
 import logging
 
 from src.utilities.config import SimulationConfig
-from src.utilities.enums import Algorithm, Objectives
+from src.utilities.enums import Algorithm, Objectives, SolutionMode
 from src.solvers.solver import Solver
+from src.utilities.types import TripLike, VehicleLike, TravelTimeMatrix
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +53,24 @@ class OnlineSolver(Solver):
     def __init__(self,
                  network: Any,
                  vehicles: List[Any],
-                 simulation_config: SimulationConfig):
-        super().__init__(network, vehicles, simulation_config)
+                 simulation_config: SimulationConfig,
+                 durations: TravelTimeMatrix,
+                 costs: TravelTimeMatrix):
+        super().__init__(network, vehicles, simulation_config, durations, costs)
         # Assign random numbers to each vehicle request assignment
-        for veh_id, state in self.vehicle_request_assign.items():
+        for vehicle_id, state in self.vehicle_request_assign.items():
             state.random_number = random.random()
 
-    def determine_available_vehicles(self, trip):
+    def solve(self, all_vehicles, active_vehicles, trips, rejected_trips, current_time=None) -> None:
+        """Uniform entry point for TaxiDispatcher.optimize().
+
+        `current_time` is accepted for interface uniformity with StochasticSolver.solve but unused
+        by the online algorithms.
+        """
+        self.variables_declaration(all_vehicles, trips)
+        self.online_solver(active_vehicles, trips, rejected_trips)
+
+    def determine_available_vehicles(self, trip: TripLike) -> None:
         """Determine whether each vehicle can feasibly serve the trip (e.g. reach pickup by latest_pickup).
 
         Input:
@@ -69,10 +81,10 @@ class OnlineSolver(Solver):
             - Iterate over self.vehicle_request_assign and set assign_possible for each vehicle.
             - Use the parent class method calc_reach_time(veh_info, trip).
         """
-        """you should write your code here ..."""
+        raise NotImplementedError("OnlineSolver.determine_available_vehicles() not implemented")
 
 
-    def online_solver(self, K, P_not_assigned, rejected_trips):
+    def online_solver(self, K: List[VehicleLike], P_not_assigned: List[TripLike], rejected_trips: List[TripLike]) -> None:
         """Find a solution to assign ride requests to vehicles after arrival.
 
         Input:
@@ -83,7 +95,8 @@ class OnlineSolver(Solver):
 
         Steps:
             1. Assign requests to vehicles/routes based on the chosen algorithm.
-            2. Check the feasibility of the solution.
+            2. The three online methods differ only in how they choose among the available vehicles.
+            3. Check the feasibility of the solution.
         """
 
         # Step 1: assign requests to the vehicles/ routes
@@ -99,18 +112,25 @@ class OnlineSolver(Solver):
             logger.error("Unsupported algorithm: %s", self.algorithm)
             raise ValueError(f"Unsupported algorithm: {self.algorithm}")
 
-        # Step 2: check the feasibility of then solution
+        # Step 2: check the feasibility of the solution
         self.create_online_solution()
         if self.verify_constraints(K, assigned_requests):
             self.calc_objective_value(K, sorted_requests)
-            self.total_customers_served = sum(1 for f_i in P_not_assigned if self.Z[f_i.id])
+            if self.simulation_config.solution_mode == SolutionMode.OFFLINE:
+                self.total_customers_served = sum(1 for f_i in P_not_assigned if self.Z[f_i.id])
+            else:
+                # Outside OFFLINE mode only the first trip per vehicle becomes a served leg
+                # this round, so count vehicles with an assignment rather than the full chain.
+                self.total_customers_served = sum(
+                    1 for state in self.vehicle_request_assign.values() if state.assigned_requests
+                )
             logger.info("Online solver solution is feasible. Served %d customers.", self.total_customers_served)
 
         else:
             logger.error("The solution is not feasible.")
             raise ValueError("The solution is not feasible")
 
-    def greedy_assign(self, P_not_assigned: List[Any], rejected_trips: List[Any]) -> List[Any]:
+    def greedy_assign(self, P_not_assigned: List[TripLike], rejected_trips: List[TripLike]) -> List[TripLike]:
         """Assign ride requests to vehicles using a greedy method (e.g. best objective per request).
 
         Input:
@@ -123,22 +143,13 @@ class OnlineSolver(Solver):
             assigned_requests : list of assigned requests
 
         Hint:
-            - for each trip in P_not_assigned you have to select a vehicle to assign or reject the request.
-            - evaluating the feasibility of assigning a trip to a vehicle should be done inside "determine_available_vehicles" function.
-            - If no vehicle is available, append the trip to rejected_trips.
-            - if a vehicle is selected to assign a request:
-                - Use the assign_trip_to_vehicle function to assign the task to the selected vehicle
-                - add trip to the list of assigned_requests
+            - Every trip ends up either assigned to a vehicle or appended to rejected_trips.
+            - determine_available_vehicles decides which vehicles could serve a given trip;
+              assign_trip_to_vehicle records the choice and updates that vehicle's state.
         """
-        # for each request find the best insertion position
-        assigned_requests = []
-        """
-            Implement your greedy algorithm here:
-        """
+        raise NotImplementedError("OnlineSolver.greedy_assign() not implemented")
 
-        return assigned_requests
-
-    def random_assign(self, P_not_assigned: List[Any], rejected_trips: List[Any]) -> List[Any]:
+    def random_assign(self, P_not_assigned: List[TripLike], rejected_trips: List[TripLike]) -> List[TripLike]:
         """Assign ride requests to vehicles based on random solution method
 
         Input:
@@ -151,22 +162,13 @@ class OnlineSolver(Solver):
             assigned_requests : list of assigned requests
 
         Hint:
-            - for each trip in P_not_assigned you have to select a vehicle to assign or reject the request.
-            - evaluating the feasibility of assigning a trip to a vehicle should be done inside "determine_available_vehicles" function.
-            - If no vehicle is available, append the trip to rejected_trips.
-            - if a vehicle is selected to assign a request:
-                - Use the assign_trip_to_vehicle function to assign the task to the selected vehicle
-                - add trip the list of assigned_requests
+            - Every trip ends up either assigned to a vehicle or appended to rejected_trips.
+            - determine_available_vehicles decides which vehicles could serve a given trip;
+              assign_trip_to_vehicle records the choice and updates that vehicle's state.
         """
-        # for each request find the best insertion position
-        assigned_requests = []
-        """
-            Implement your random algorithm here:
-        """
+        raise NotImplementedError("OnlineSolver.random_assign() not implemented")
 
-        return assigned_requests
-
-    def ranking_assign(self, P_not_assigned: List[Any], rejected_trips: List[Any]) -> List[Any]:
+    def ranking_assign(self, P_not_assigned: List[TripLike], rejected_trips: List[TripLike]) -> List[TripLike]:
         """Assign ride requests to vehicles by ranking solution method.
 
         Input:
@@ -179,18 +181,9 @@ class OnlineSolver(Solver):
             assigned_requests : list of assigned requests
 
         Hint:
-            - for each trip in P_not_assigned you have to select a vehicle to assign or reject the request.
-            - evaluating the feasibility of assigning a trip to a vehicle should be done inside "determine_available_vehicles" function.
-            - If no vehicle is available, append the trip to rejected_trips.
-            - if a vehicle is selected to assign a request:
-                - Use the assign_trip_to_vehicle function to assign the task to the selected vehicle
-                - add trip the list of assigned_requests
+            - Every trip ends up either assigned to a vehicle or appended to rejected_trips.
+            - determine_available_vehicles decides which vehicles could serve a given trip;
+              assign_trip_to_vehicle records the choice and updates that vehicle's state.
 
         """
-        # for each request find the best insertion position
-        assigned_requests = []
-        """
-            Implement your ranking algorithm here:
-        """
-
-        return assigned_requests
+        raise NotImplementedError("OnlineSolver.ranking_assign() not implemented")

@@ -1,0 +1,352 @@
+{
+  "version": 3,
+  "merge": "override",
+  "root": {
+    "fields": {
+      "taxi_config": {
+        "order": 5,
+        "category": "object",
+        "class": "SimulationConfig",
+        "module": "src.utilities.config",
+        "label": "TaxiSimulationConfig",
+        "hidden": true,
+        "defineValue": "taxi_simulation_config",
+        "parameters": {
+          "objective": {
+            "category": "object",
+            "class": "Objectives",
+            "module": "src.utilities.enums",
+            "parameters": {
+              "value": {
+                "category": "primitive",
+                "type": "string",
+                "label": "Objective",
+                "default": "total_customers"
+              }
+            }
+          },
+          "algorithm": {
+            "category": "object",
+            "class": "Algorithm",
+            "module": "src.utilities.enums",
+            "parameters": {
+              "value": {
+                "category": "primitive",
+                "type": "string",
+                "label": "Algorithm",
+                "default": "Greedy"
+              }
+            }
+          },
+          "solution_mode": {
+            "category": "object",
+            "class": "SolutionMode",
+            "module": "src.utilities.enums",
+            "parameters": {
+              "value": {
+                "category": "primitive",
+                "type": "string",
+                "label": "Solution mode",
+                "default": "fully_online"
+              }
+            }
+          },
+          "known_portion": {
+            "category": "primitive",
+            "type": "int",
+            "label": "Known portion",
+            "default": 100
+          },
+          "advance_notice": {
+            "category": "primitive",
+            "type": "int",
+            "label": "Advance notice",
+            "default": 0
+          },
+          "time_window": {
+            "category": "primitive",
+            "type": "int",
+            "label": "Time window",
+            "default": 3
+          },
+          "weight": {
+            "category": "primitive",
+            "type": "float",
+            "label": "Weight",
+            "default": 1
+          },
+          "consensus": {
+            "category": "object",
+            "class": "ConsensusConfig",
+            "module": "src.utilities.config",
+            "label": "ConsensusConfig",
+            "optional": true,
+            "parameters": {
+              "nb_scenario": {
+                "category": "primitive",
+                "type": "int",
+                "label": "Number of scenarios"
+              },
+              "nb_requests": {
+                "category": "primitive",
+                "type": "int",
+                "label": "Requests instance was generated with"
+              },
+              "generation_sim_time": {
+                "category": "primitive",
+                "type": "float",
+                "label": "Window (s) requests were generated over",
+                "optional": true,
+                "default": 7200.0
+              },
+              "consensus_param": {
+                "category": "object",
+                "class": "ConsensusParams",
+                "module": "src.utilities.enums",
+                "parameters": {
+                  "value": {
+                    "category": "primitive",
+                    "type": "string",
+                    "label": "Consensus param"
+                  }
+                }
+              }
+            }
+          },
+          "re_optimize": {
+            "category": "object",
+            "class": "ReOptimizeConfig",
+            "module": "src.utilities.config",
+            "label": "ReOptimizeConfig",
+            "optional": true,
+            "parameters": {
+              "destroy_method": {
+                "category": "object",
+                "class": "DestroyMethod",
+                "module": "src.utilities.enums",
+                "parameters": {
+                  "value": {
+                    "category": "primitive",
+                    "type": "string",
+                    "label": "Destroy method"
+                  }
+                }
+              }
+            }
+          },
+          "dqn": {
+            "category": "object",
+            "class": "DQNConfig",
+            "module": "src.utilities.config",
+            "label": "DQNConfig",
+            "optional": true,
+            "parameters": {
+              "model_path": {
+                "category": "primitive",
+                "type": "string",
+                "label": "Model path"
+              },
+              "training_mode": {
+                "category": "primitive",
+                "type": "boolean",
+                "label": "Training mode",
+                "optional": true,
+                "default": false
+              },
+              "epsilon": {
+                "category": "primitive",
+                "type": "float",
+                "label": "Epsilon",
+                "optional": true,
+                "default": 0.0
+              },
+              "defer_explore_prob": {
+                "category": "primitive",
+                "type": "float",
+                "label": "Defer explore probability",
+                "optional": true,
+                "default": 0.1
+              },
+              "seed": {
+                "category": "primitive",
+                "type": "int",
+                "label": "Seed",
+                "optional": true
+              }
+            }
+          }
+        }
+      },
+      "optimization": {
+        "fields": {
+          "optimization": {
+            "options": {
+              "optimization": {
+                "parameters": {
+                  "dispatcher": {
+                    "options": {
+                      "taxi_dispatcher": {
+                        "category": "object",
+                        "class": "TaxiDispatcher",
+                        "module": "src.simulation.taxi_dispatcher",
+                        "label": "TaxiDispatcher",
+                        "parameters": {
+                          "network": {
+                            "category": "value",
+                            "useValue": "network"
+                          },
+                          "vehicles": {
+                            "category": "value",
+                            "useValue": "vehicles"
+                          },
+                          "simulation_config": {
+                            "category": "value",
+                            "useValue": "taxi_simulation_config"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "data_reader": {
+        "fields": {
+          "data_reader": {
+            "options": {
+              "taxi_data_reader": {
+                "order": 2,
+                "category": "section",
+                "label": "TaxiDataReader",
+                "fields": {
+                  "vehicles_file": {
+                    "order": 0,
+                    "category": "primitive",
+                    "type": "string",
+                    "label": "Vehicles file path",
+                    "hint": "Path relative to the instance folder, or an absolute path (defaults to 'vehicles.csv').",
+                    "optional": true,
+                    "default": "vehicles.csv",
+                    "defineValue": "taxi_vehicles_file",
+                    "postProcesses": [
+                      {
+                        "target": "join_paths",
+                        "overrides": {
+                          "parameters": {
+                            "first_path": {
+                              "category": "value",
+                              "useValue": "instance_folder"
+                            },
+                            "second_path": {
+                              "category": "value",
+                              "useValue": "taxi_vehicles_file"
+                            }
+                          },
+                          "defineValue": "taxi_vehicles_file_path"
+                        }
+                      }
+                    ]
+                  },
+                  "graph_file": {
+                    "order": 1,
+                    "category": "primitive",
+                    "type": "string",
+                    "label": "Graph file path",
+                    "hint": "Path relative to the instance folder, or an absolute path (defaults to 'graph.json').",
+                    "optional": true,
+                    "default": "graph.json",
+                    "defineValue": "taxi_graph_file",
+                    "postProcesses": [
+                      {
+                        "target": "join_paths",
+                        "overrides": {
+                          "parameters": {
+                            "first_path": {
+                              "category": "value",
+                              "useValue": "instance_folder"
+                            },
+                            "second_path": {
+                              "category": "value",
+                              "useValue": "taxi_graph_file"
+                            }
+                          },
+                          "defineValue": "taxi_graph_file_path"
+                        }
+                      }
+                    ]
+                  },
+                  "data_reader": {
+                    "order": 2,
+                    "category": "object",
+                    "class": "TaxiDataReader",
+                    "module": "src.simulation.data_reader",
+                    "parameters": {
+                      "requests_file_path": {
+                        "category": "value",
+                        "useValue": "requests_file_path"
+                      },
+                      "vehicles_file_path": {
+                        "category": "value",
+                        "useValue": "taxi_vehicles_file_path"
+                      },
+                      "vehicles_end_time": {
+                        "category": "primitive",
+                        "type": "int",
+                        "optional": true,
+                        "label": "Vehicles end time",
+                        "default": 10000
+                      },
+                      "sim_end_time": {
+                        "category": "primitive",
+                        "type": "int",
+                        "optional": true,
+                        "label": "Simulation end time"
+                      }
+                    },
+                    "methods": {
+                      "load_graph": {
+                        "name": "load_graph",
+                        "defineMethod": "load_graph",
+                        "parameters": {
+                          "file_path": {
+                            "category": "value",
+                            "useValue": "taxi_graph_file_path"
+                          }
+                        },
+                        "defineValue": "network"
+                      },
+                      "get_vehicles": {
+                        "name": "get_vehicles",
+                        "defineMethod": "get_vehicles",
+                        "defineValues": ["vehicles", "routes_by_vehicle_id"]
+                      },
+                      "get_trips": {
+                        "name": "get_trips",
+                        "defineMethod": "get_trips",
+                        "parameters": {
+                          "config": {
+                            "category": "value",
+                            "useValue": "taxi_simulation_config"
+                          }
+                        },
+                        "defineValue": "trips"
+                      }
+                    },
+                    "postProcesses": [
+                      { "target": "load_graph" },
+                      { "target": "get_vehicles" },
+                      { "target": "get_trips" }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

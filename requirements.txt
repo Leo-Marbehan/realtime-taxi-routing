@@ -1,6 +1,8 @@
 gurobipy
 scipy
-matplotlib==3.8
+matplotlib
 seaborn
 scipy
 tabulate
+shapely
+torch

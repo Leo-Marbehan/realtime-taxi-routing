@@ -1,5 +1,4 @@
-import json
-import pickle
+import csv
 import random
 import networkx as nx
 from typing import Optional
@@ -11,7 +10,7 @@ from src.utilities.config import SimulationConfig
 
 from src.simulation.ride_request import RideRequest
 from src.utilities.enums import SolutionMode
-from src.utilities.tools import find_shortest_paths
+from src.utilities.network_tools import load_network_graph
 
 
 class TaxiDataReader(DataReader):
@@ -22,11 +21,9 @@ class TaxiDataReader(DataReader):
     Additional Attributes:
     ------------
     requests_file_path : str
-        File path to the JSON file containing trip requests.
+        File path to the CSV file containing trip requests.
     vehicles_file_path : str
-        File path to the JSON file containing vehicle data.
-    graph_from_json_file_path : str
-        File path to the JSON file containing the transportation network graph.
+        File path to the CSV file containing vehicle data.
     sim_end_time : int
         Simulation end time.
     vehicles_end_time : int
@@ -34,7 +31,6 @@ class TaxiDataReader(DataReader):
     """
 
     def __init__(self, requests_file_path: str, vehicles_file_path: str,
-                 graph_from_json_file_path: Optional[str] = None,
                  sim_end_time: Optional[int] = None,
                  vehicles_end_time: Optional[int] = None) -> None:
 
@@ -42,14 +38,27 @@ class TaxiDataReader(DataReader):
         self.__network = None
         self.__requests_file_path = requests_file_path
         self.__vehicles_file_path = vehicles_file_path
-        self.__graph_from_json_file_path = graph_from_json_file_path
 
         # The time difference between the arrival and the departure time.
         self.__boarding_time = 0
         self.__sim_end_time = sim_end_time
         self.__vehicles_end_time = vehicles_end_time
+        self.__horizon_start: Optional[float] = None  # lazily derived, see _horizon_start()
 
-    def get_json_trips(self, config: SimulationConfig):
+    def _horizon_start(self) -> float:
+        """Time the fleet comes on shift, i.e. the earliest vehicle start_time.
+
+        This is the operating horizon's origin, so it -- not 0 -- is what "known from the start"
+        means for a request's release_time. Read lazily and cached: get_trips() runs before
+        get_vehicles(), so it cannot reuse anything the latter parsed.
+        """
+        if self.__horizon_start is None:
+            with open(self.__vehicles_file_path, 'r', newline='') as vFile:
+                self.__horizon_start = min(
+                    float(entry['start_time']) for entry in csv.DictReader(vFile, delimiter=';'))
+        return self.__horizon_start
+
+    def get_trips(self, config: SimulationConfig):
         """ Function: read trip from a file
             Input:
             ------------
@@ -62,24 +71,26 @@ class TaxiDataReader(DataReader):
             trips : A list of RideRequest objects.
         """
         trips = []
-        with open(self.__requests_file_path, 'r') as rFile:
-            js_data = json.load(rFile)
+        with open(self.__requests_file_path, 'r', newline='') as rFile:
+            csv_data = list(csv.DictReader(rFile, delimiter=';'))
             nb_passengers = 1  # Each request corresponds to 1 passenger.
             # random.seed(42)
             # Shuffle the indices and select known_portion of them
-            indices = list(range(len(js_data)))
+            indices = list(range(len(csv_data)))
             random.shuffle(indices)
-            known_trip_indices = indices[:int(len(js_data) * config.known_portion/100)]
+            known_trip_indices = indices[:int(len(csv_data) * config.known_portion/100)]
 
-            for idx, entry in enumerate(js_data):
+            for idx, entry in enumerate(csv_data):
                 # Process trip data
-                orig_id = str(int(entry['orig']))
-                dest_id = str(int(entry['dest']))
+                orig_id = str(int(entry['origin']))
+                dest_id = str(int(entry['destination']))
                 fare_value = float(entry['fare'])
 
-                # Optionally get longitude and latitude if available
                 lon_orig = lat_orig = None
                 lon_dest = lat_dest = None
+                if self.__network is not None:
+                    lon_orig, lat_orig = self.__network.nodes[orig_id]['pos']
+                    lon_dest, lat_dest = self.__network.nodes[dest_id]['pos']
 
                 orig_location = LabelLocation(orig_id, lon=lon_orig, lat=lat_orig)
                 dest_location = LabelLocation(dest_id, lon=lon_dest, lat=lat_dest)
@@ -89,31 +100,42 @@ class TaxiDataReader(DataReader):
                     path_info = self.__network.nodes[orig_id]['shortest_paths'][dest_id]
                     travel_time = path_info['total_duration']
 
-                ready_time = round(float(entry['tmin']), 3)
-                # Determine release_time
+                ready_time = round(float(entry['ready_time']), 3)
+                # Determine release_time. "Known from the start" means the start of the operating
+                # horizon (when the fleet comes on shift), not absolute time 0 -- a request revealed
+                # before any vehicle exists is meaningless, and it would leave the simulation (and
+                # the viewer timeline) with dead air ahead of the first vehicle.
+                horizon_start = self._horizon_start()
                 if config.solution_mode == SolutionMode.OFFLINE:
-                    release_time = 0
+                    release_time = horizon_start
                 elif config.solution_mode == SolutionMode.FULLY_ONLINE:
                     release_time = ready_time
                 elif config.solution_mode == SolutionMode.PARTIAL_ONLINE:
                     if idx in known_trip_indices:
-                        release_time = 0
+                        release_time = horizon_start
                     else:
                         release_time = ready_time
                 elif config.solution_mode == SolutionMode.ADVANCE_NOTICE:
-                    release_time = max(0.0, ready_time - config.advance_notice * 60)
+                    release_time = max(horizon_start, ready_time - config.advance_notice)
+                elif config.solution_mode == SolutionMode.CUSTOM_SCENARIO:
+                    if idx in known_trip_indices:
+                        release_time = horizon_start
+                    else:
+                        release_time = max(horizon_start, ready_time - config.advance_notice)
+                else:
+                    raise ValueError(f"Unsupported solution mode: {config.solution_mode}")
 
 
                 # Create and append RideRequest object
                 trip = RideRequest(
-                    id=entry['id'],
+                    id=entry['trip_id'],
                     origin=orig_location,
                     destination=dest_location,
                     nb_passengers=nb_passengers,
                     release_time=release_time,
                     ready_time=ready_time,
                     due_time=100000.0,  # Adjust as needed
-                    latest_pickup=round(ready_time + config.time_window * 60, 3),
+                    latest_pickup=round(ready_time + config.time_window, 3),
                     fare=fare_value,
                     shortest_travel_time=travel_time
                 )
@@ -121,27 +143,37 @@ class TaxiDataReader(DataReader):
         random.seed(None)
         return trips
 
-    def get_json_vehicles(self):
+    def get_vehicles(self, vehicles_end_time: Optional[float] = None):
         """ Function: read vehicles from a file
+                Input:
+                ------------
+                vehicles_end_time : float, optional
+                    Overrides the end_time every vehicle is given (e.g. derived from the actual trips'
+                    latest_pickup/travel times by the caller, so it covers whatever absolute time range
+                    this instance spans). Falls back to the constructor's vehicles_end_time if omitted.
+
                 Output:
                 ------------
                 vehicles: a list of Vehicle objects
                 routes_by_vehicle_id : a dictionary of routes by vehicle ID
         """
+        end_time = vehicles_end_time if vehicles_end_time is not None else self.__vehicles_end_time
         vehicles = []
         routes_by_vehicle_id = {}  # Remains empty
 
-        with open(self.__vehicles_file_path, 'r') as rFile:
-            js_data = json.load(rFile)
-            for entry in js_data:
+        with open(self.__vehicles_file_path, 'r', newline='') as rFile:
+            csv_data = csv.DictReader(rFile, delimiter=';')
+            for entry in csv_data:
                 # Process vehicle data
-                vehicle_id = entry['id']
-                start_time = float(entry['initTime'])
+                vehicle_id = entry['vehicle_id']
+                start_time = float(entry['start_time'])
                 stop_departure_time = start_time + self.__boarding_time
-                capacity = 4
-                stop_id = str(int(entry['initPos']))
+                capacity = int(entry['capacity'])
+                stop_id = str(int(entry['start_stop']))
 
                 lon, lat, mode = None, None, None
+                if self.__network is not None:
+                    lon, lat = self.__network.nodes[stop_id]['pos']
                 start_stop_location = LabelLocation(stop_id, lon=lon, lat=lat)
 
                 start_stop = Stop(
@@ -150,7 +182,6 @@ class TaxiDataReader(DataReader):
                     location=start_stop_location
                 )
 
-                # reusable=True since the vehicles are shuttles.
                 # Create and append Vehicle object
                 vehicle = Vehicle(
                     veh_id = vehicle_id,
@@ -158,71 +189,16 @@ class TaxiDataReader(DataReader):
                     start_stop=start_stop,
                     capacity=capacity,
                     release_time= start_time,
-                    end_time=self.__vehicles_end_time,
-                    mode=mode, reusable=True)
+                    end_time=end_time,
+                    mode=mode)
 
                 vehicles.append(vehicle)
 
         return vehicles, routes_by_vehicle_id
 
-    def get_json_graph(self) -> nx.DiGraph:
-        """ Function: Reads the transportation network from a JSON file and processes it into a NetworkX graph.
-                Output:
-                ------------
-                network: routing network graph
-        """
-        if not self.__graph_from_json_file_path:
-            raise ValueError("Graph file path is not provided.")
-
-        with open(self.__graph_from_json_file_path, 'r') as rFile:
-            data = json.load(rFile)
-            nodes = data.get("network", {}).get("nodes", [])
-            roads = data.get("network", {}).get("roads", {})
-            costs = data.get("times", {})
-
-            self.__network = nx.DiGraph()
-            pos = {}
-
-            # Process nodes
-            for i, node_data in enumerate(nodes):
-                node_id = str(i)
-                x = float(node_data.get("x", 0.0))
-                y = float(node_data.get("y", 0.0))
-
-                node_dict = {
-                    "id": node_id,
-                    "coordinates": [x, y],
-                    "in_arcs": [],
-                    "out_arcs": []
-                }
-                pos[node_id] = (x, y)
-                self.__network.add_node(node_id, pos=(x, y), Node=node_dict)
-
-            # Process edges
-            precision = 0
-            for road_key, road_data in roads.items():
-                orig, dest = eval(road_key)
-                orig_id = str(orig)
-                dest_id = str(dest)
-                length = round(float(road_data.get('distance', 0.0)), precision)
-                duration = float(costs[orig][dest])
-                cost = round(duration / 3600 * 5, precision)
-
-                self.__network.add_edge(
-                    orig_id, dest_id,
-                    cost=cost,
-                    duration=round(duration, precision),
-                    length=length
-                )
-            find_shortest_paths(self.__network)
-
-        return self.__network
-
     def load_graph(self, file_path: str) -> nx.DiGraph:
-        """Load the graph with all its data from a file."""
-        with open(file_path, 'rb') as f:
-            self.__network = pickle.load(f)
-        f.close()
+        """Load the graph with all its data from a JSON file (networkx node-link format)."""
+        self.__network = load_network_graph(file_path)
         return self.__network
 
 

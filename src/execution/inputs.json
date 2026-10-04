@@ -1,0 +1,526 @@
+{
+  "task_type": "scenarios",
+  "single_test": {
+    "instances": "Instance_1",
+    "objectives": "total_profit",
+    "algorithms": "dqn",
+    "solution_mode": "fully_online",
+    "time_windows": 240,
+    "known_portion": 25,
+    "nb_scenario": 3,
+    "weight": 0,
+    "consensus_params": "qualitative",
+    "destroy_method": "fix_variables",
+    "deep_copy": false,
+    "live": true,
+    "model_path": "data/Models/dqn_model_profit_7.pt"
+  },
+  "scenarios": [
+    {
+      "scenario": "initial_test",
+      "parameters": {
+        "instances": [
+          "Instance_1",
+          "Instance_2",
+          "Instance_3",
+          "Instance_4",
+          "Instance_5"
+        ],
+        "objectives": [
+          "total_customers"
+        ],
+        "algorithms": [
+          "mip_solver"
+        ],
+        "solution_mode": [
+          "offline"
+        ],
+        "time_windows": [
+          180
+        ]
+      }
+    },
+    {
+      "scenario": "TP1",
+      "parameters": {
+        "instances": [
+          "Instance_1",
+          "Instance_2",
+          "Instance_3",
+          "Instance_4",
+          "Instance_5"
+        ],
+        "objectives": [
+          "total_profit",
+          "waiting_time",
+          "total_customers"
+        ],
+        "algorithms": [
+          "mip_solver"
+        ],
+        "solution_mode": [
+          "offline"
+        ],
+        "time_windows": [
+          120,
+          180,
+          240
+        ]
+      }
+    },
+    {
+      "scenario": "TP1_Multi",
+      "parameters": {
+        "instances": [
+          "Instance_2"
+        ],
+        "objectives": [
+          "multi_objective"
+        ],
+        "algorithms": [
+          "mip_solver"
+        ],
+        "solution_mode": [
+          "offline"
+        ],
+        "time_windows": [
+          180
+        ],
+        "weight": [
+          0,
+          0.1,
+          0.2,
+          0.3,
+          0.4,
+          0.5,
+          0.6,
+          0.7,
+          0.8,
+          0.9,
+          1
+        ]
+      }
+    },
+    {
+      "scenario": "TP2_1",
+      "parameters": {
+        "instances": [
+          "Instance_1",
+          "Instance_2",
+          "Instance_3",
+          "Instance_4",
+          "Instance_5"
+        ],
+        "objectives": [
+          "total_profit"
+        ],
+        "algorithms": [
+          "re_optimize"
+        ],
+        "solution_mode": [
+          "partial_online"
+        ],
+        "known_portion": [
+          25,
+          50
+        ],
+        "time_windows": [
+          120
+        ],
+        "destroy_method": [
+          "default",
+          "fix_variables",
+          "fix_arrivals"
+        ]
+      }
+    },
+    {
+      "scenario": "TP2_2",
+      "parameters": {
+        "instances": [
+          "Instance_1",
+          "Instance_2",
+          "Instance_3",
+          "Instance_4",
+          "Instance_5"
+        ],
+        "objectives": [
+          "total_profit"
+        ],
+        "algorithms": [
+          "re_optimize"
+        ],
+        "solution_mode": [
+          "advance_notice"
+        ],
+        "time_windows": [
+          120
+        ],
+        "destroy_method": [
+          "default",
+          "fix_variables",
+          "fix_arrivals"
+        ]
+      }
+    },
+    {
+      "scenario": "TP3",
+      "parameters": {
+        "instances": [
+          "Instance_1",
+          "Instance_2",
+          "Instance_3",
+          "Instance_4",
+          "Instance_5"
+        ],
+        "objectives": [
+          "total_profit",
+          "waiting_time",
+          "total_customers"
+        ],
+        "algorithms": [
+          "greedy",
+          "random",
+          "ranking"
+        ],
+        "solution_mode": [
+          "fully_online",
+          "advance_notice"
+        ],
+        "time_windows": [
+          120,
+          180,
+          240
+        ]
+      }
+    },
+    {
+      "scenario": "TP4_scenario",
+      "parameters": {
+        "instances": [
+          "Instance_1"
+        ],
+        "objectives": [
+          "total_profit"
+        ],
+        "algorithms": [
+          "consensus"
+        ],
+        "solution_mode": [
+          "fully_online"
+        ],
+        "time_windows": [
+          180
+        ],
+        "nb_scenario": [
+          2,
+          4,
+          6,
+          8,
+          10
+        ],
+        "consensus_params": [
+          "quantitative",
+          "qualitative"
+        ]
+      }
+    },
+    {
+      "scenario": "TP4_CONSENSUS",
+      "parameters": {
+        "instances": [
+          "Instance_1",
+          "Instance_2",
+          "Instance_3",
+          "Instance_4",
+          "Instance_5"
+        ],
+        "objectives": [
+          "total_profit"
+        ],
+        "algorithms": [
+          "consensus"
+        ],
+        "solution_mode": [
+          "partial_online"
+        ],
+        "known_portion": [
+          0,
+          25,
+          50
+        ],
+        "time_windows": [
+          180
+        ],
+        "nb_scenario": [
+          4
+        ],
+        "consensus_params": [
+          "quantitative",
+          "qualitative"
+        ]
+      }
+    },
+    {
+      "scenario": "TP4_GREEDY",
+      "parameters": {
+        "instances": [
+          "Instance_1",
+          "Instance_2",
+          "Instance_3",
+          "Instance_4",
+          "Instance_5"
+        ],
+        "objectives": [
+          "total_profit"
+        ],
+        "algorithms": [
+          "greedy"
+        ],
+        "solution_mode": [
+          "partial_online"
+        ],
+        "known_portion": [
+          0,
+          25,
+          50
+        ],
+        "time_windows": [
+          180
+        ]
+      }
+    },
+    {
+      "scenario": "TP5_DQN_PROFIT",
+      "parameters": {
+        "instances": ["Instance_1", "Instance_2", "Instance_3"],
+        "objectives": ["total_profit"],
+        "algorithms": ["dqn"],
+        "solution_mode": ["fully_online"],
+        "time_windows": [240],
+        "model_path": ["data/Models/dqn_model_profit.pt"]
+      }
+    },
+    {
+      "scenario": "TP5_DQN_WAIT",
+      "parameters": {
+        "instances": ["Instance_1", "Instance_2", "Instance_3"],
+        "objectives": ["waiting_time"],
+        "algorithms": ["dqn"],
+        "solution_mode": ["fully_online"],
+        "time_windows": [240],
+        "model_path": ["data/Models/dqn_model_wait.pt"]
+      }
+    },
+    {
+      "scenario": "TP5_DQN_CUST",
+      "parameters": {
+        "instances": ["Instance_1", "Instance_2", "Instance_3"],
+        "objectives": ["total_customers"],
+        "algorithms": ["dqn"],
+        "solution_mode": ["fully_online"],
+        "time_windows": [240],
+        "model_path": ["data/Models/dqn_model_cust.pt"]
+      }
+    },
+    {
+      "scenario": "TP5_GREEDY",
+      "parameters": {
+        "instances": ["Instance_1", "Instance_2", "Instance_3"],
+        "objectives": ["total_profit", "waiting_time", "total_customers"],
+        "algorithms": ["greedy"],
+        "solution_mode": ["fully_online"],
+        "time_windows": [240]
+      }
+    }
+  ],
+  "scenario_groups": {
+    "TP2": ["TP2_1", "TP2_2"],
+    "TP4": ["TP4_CONSENSUS", "TP4_GREEDY"],
+    "TP5": ["TP5_DQN_PROFIT", "TP5_DQN_WAIT", "TP5_DQN_CUST", "TP5_GREEDY"]
+  },
+  "create_plot": [
+    {
+      "scenario": "TP1",
+      "plots": [
+        {
+          "plot_name": "offline_plot",
+          "metrics": [
+            "% of Service",
+            "Total profit",
+            "Total wait time (s)"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "TP1_Multi",
+      "plots": [
+        {
+          "plot_name": "multi_plot",
+          "metrics": [
+            "Total profit",
+            "Total wait time (s)"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "TP2",
+      "plots": [
+        {
+          "plot_name": "compare_algorithm_plot",
+          "metrics": [
+            "Competitive Ratio",
+            "runtime (s)"
+          ]
+        },
+        {
+          "plot_name": "compare_algorithm_plot",
+          "metrics": [
+            "% of Service",
+            "Total profit",
+            "Total wait time (s)"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "TP3",
+      "plots": [
+        {
+          "plot_name": "compare_algorithm_plot",
+          "metrics": [
+            "% of Service",
+            "Average profit ($)",
+            "Avg. wait time (s)"
+          ]
+        },
+        {
+          "plot_name": "compare_timeWindow_plot",
+          "metrics": [
+            "Competitive Ratio"
+          ]
+        },
+        {
+          "plot_name": "compare_timeWindow_plot",
+          "metrics": [
+            "Objective value"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "TP4_scenario",
+      "plots": [
+        {
+          "plot_name": "number_scenarios",
+          "metrics": [
+            "Objective value"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "TP4",
+      "plots": [
+        {
+          "plot_name": "compare_algorithm_plot",
+          "metrics": [
+            "Competitive Ratio",
+            "runtime (s)"
+          ]
+        },
+        {
+          "plot_name": "compare_algorithm_plot",
+          "metrics": [
+            "% of Service",
+            "Average profit ($)",
+            "Avg. wait time (s)"
+          ]
+        }
+      ]
+    },
+    {
+      "scenario": "TP5",
+      "plots": [
+        {
+          "plot_name": "compare_algorithm_plot",
+          "metrics": [
+            "% of Service",
+            "Total profit",
+            "Total wait time (s)"
+          ]
+        }
+      ]
+    }
+  ],
+  "create_instance": {
+    "num_instances": 20,
+    "nb_requests": 300,
+    "start_time": 25200.0,
+    "sim_time": 3600.0,
+    "alpha": 3.0,
+    "beta": 0.03,
+    "known_portion": 0,
+    "advance_notice": 1800,
+    "nb_vehicles": 30,
+    "seed": 42
+  },
+  "train_dqn": [
+    {
+      "name": "profit",
+      "train_instances": [
+        "Instance_6", "Instance_7", "Instance_8", "Instance_9", "Instance_10",
+        "Instance_11", "Instance_12", "Instance_13", "Instance_14", "Instance_15",
+        "Instance_16", "Instance_17", "Instance_18", "Instance_19", "Instance_20"
+      ],
+      "held_out_instances": ["Instance_1", "Instance_2", "Instance_3", "Instance_4", "Instance_5"],
+      "model_path": "data/Models/dqn_model_profit_7.pt",
+      "num_episodes": 150,
+      "epsilon_start": 1.0,
+      "epsilon_end": 0.05,
+      "time_window": 240,
+      "objective": "total_profit",
+      "solution_mode": "fully_online",
+      "weight": 0,
+      "expiry_penalty_lambda": 0.1
+    },
+    {
+      "name": "wait",
+      "train_instances": [
+        "Instance_6", "Instance_7", "Instance_8", "Instance_9", "Instance_10",
+        "Instance_11", "Instance_12", "Instance_13", "Instance_14", "Instance_15",
+        "Instance_16", "Instance_17", "Instance_18", "Instance_19", "Instance_20"
+      ],
+      "held_out_instances": ["Instance_1", "Instance_2", "Instance_3", "Instance_4", "Instance_5"],
+      "model_path": "data/Models/dqn_model_wait_7.pt",
+      "num_episodes": 150,
+      "epsilon_start": 1.0,
+      "epsilon_end": 0.05,
+      "time_window": 240,
+      "objective": "waiting_time",
+      "solution_mode": "fully_online",
+      "weight": 0,
+      "expiry_penalty_lambda": 0.1
+    },
+    {
+      "name": "cust",
+      "train_instances": [
+        "Instance_6", "Instance_7", "Instance_8", "Instance_9", "Instance_10",
+        "Instance_11", "Instance_12", "Instance_13", "Instance_14", "Instance_15",
+        "Instance_16", "Instance_17", "Instance_18", "Instance_19", "Instance_20"
+      ],
+      "held_out_instances": ["Instance_1", "Instance_2", "Instance_3", "Instance_4", "Instance_5"],
+      "model_path": "data/Models/dqn_model_cust_7.pt",
+      "num_episodes": 150,
+      "epsilon_start": 1.0,
+      "epsilon_end": 0.05,
+      "time_window": 240,
+      "objective": "total_customers",
+      "solution_mode": "fully_online",
+      "weight": 0,
+      "expiry_penalty_lambda": 0.1
+    }
+  ]
+}

@@ -40,6 +40,7 @@ class Algorithm(Enum):
         - RANKING : ranking method to assign arrival requests to vehicles
         - CONSENSUS : consensus online stochastic algorithm to assign arrival requests to vehicles
         - RE_OPTIMIZE: Algorithm to re-optimize the solution based on destroy and repair
+        - DQN : learned Q-value based global-pair selection (see solvers/dqn_solver.py)
     """
     MIP_SOLVER = "MIP_Solver"
     GREEDY = "Greedy"
@@ -47,6 +48,7 @@ class Algorithm(Enum):
     RANKING = "Ranking"
     CONSENSUS = "Consensus"
     RE_OPTIMIZE = "Re_Optimize"
+    DQN = "DQN"
 
 class ConsensusParams(Enum):
     """ The type of consensus algorithm:
