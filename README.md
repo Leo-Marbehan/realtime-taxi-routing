@@ -109,7 +109,7 @@ Set up the simulation with all components and execute it.
 1. **Clone the Repository with Submodules**: Start by cloning the repository to your local machine and initializing its submodules. Use the following command:
 
     ```bash
-    git clone https://github.com/RTOpt/realtime-taxi-routing.git
+    git clone https://github.com/lab-core/realtime-taxi-routing.git
     cd realtime-taxi-routing
     git submodule update --init --recursive
     ```
