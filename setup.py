@@ -4,7 +4,7 @@ setup(
     name='realtime-taxi-routing',
     version='0.0.1',
     packages=find_packages(),
-    url='https://github.com/RTOpt/realtime-taxi-routing',
+    url='https://github.com/lab-core/realtime-taxi-routing',
     license='',
     author='Elahe Amiri',
     author_email='elahe.amiri@polymtl.ca',
