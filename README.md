@@ -126,7 +126,7 @@ planned stops, and with the flags off the viewer treats that as an error and sto
    so `--recursive` matters:
 
     ```bash
-    git clone --recursive https://github.com/RTOpt/realtime-taxi-routing.git
+    git clone --recursive https://github.com/lab-core/realtime-taxi-routing.git
     cd realtime-taxi-routing
     ```
 
